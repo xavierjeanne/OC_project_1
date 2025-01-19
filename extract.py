@@ -6,135 +6,156 @@ import time
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-url = input("Veuillez entrer l'URL que vous souhaitez scraper : ")
 
-base_url = 'https://books.toscrape.com/'
+# URL de base pour les images
+BASE_URL = 'https://books.toscrape.com/'
+EXPECTED_PREFIX = "https://books.toscrape.com/catalogue"
 
-expected_prefix = "https://books.toscrape.com/catalogue"
+def validate_url(url):
+    """
+    Vérifie si l'URL fournie est valide et commence par le préfixe attendu.
+    """
+    if not url.startswith(EXPECTED_PREFIX):
+        print(f"L'URL doit commencer par {EXPECTED_PREFIX}.")
+        return False
+    return True
 
-if not url.startswith(expected_prefix):
-    print(f"Erreur : L'URL doit commencer par {expected_prefix}")
-else:
+def fetch_page(url):
+    """
+    Effectue une requête HTTP pour récupérer le contenu de la page.
+    """
     try:
-        page = requests.get(url, timeout=10)  
-        if page.status_code == 200:
-            soup = BeautifulSoup(page.content, "html.parser")
-            
-            product_page_url = url
-            title = soup.find("h1").string
-        
-            product_image_active = soup.find("div",class_="item active")
-           
-            if product_image_active:
-                img_tag = product_image_active.find("img")
-                if img_tag and 'src' in img_tag.attrs:
-                    relative_img_url = img_tag['src']
-                    absolute_img_url = urljoin(base_url, relative_img_url)
-                    image_url = absolute_img_url
-                else:
-                    image_url = 'Information non disponible'
-            else:
-                image_url = 'Information non disponible'
-            
-            product_description_section = soup.find(id="product_description")
-              
-            if product_description_section:
-                next_element = product_description_section.find_next("p")
-                if next_element:
-                    product_description = next_element.text.strip()  
-                else:
-                    product_description = 'Information non disponible'
-            else:
-                product_description = 'Information non disponible'
-            
-            product_page = soup.find("article",class_="product_page")
-           
-            if product_page:
-                table = product_page.find("table")
-                if table:
-                    product_info = {}
-                    for row in table.find_all("tr"):
-                        header = row.find("th")  
-                        data = row.find("td") 
-
-                        if header and data:  
-                            key = header.text.strip()  
-                            value = data.text.strip() 
-                            product_info[key] = value  
-
-                else:
-                    product_info = {}
-            else:
-                product_info = {}
-                
-            upc = product_info.get('UPC', 'Information non disponible')
-            price_excluding_taxe = product_info.get('Price (excl. tax)', 'Information non disponible')
-            price_including_taxe = product_info.get('Price (incl. tax)', 'Information non disponible')
-            availability = product_info.get('Availability', 'Information non disponible')
-            number_available = re.search(r'\((\d+)', availability).group(1) if 'Availability' in product_info else 'Information non disponible'
-            
-            breadcrumb_items = soup.select("ul.breadcrumb li")
-            
-            category = breadcrumb_items[1].get_text(strip=True) if len(breadcrumb_items) > 1 else "Information non disponible"
-            
-            product_review_rating = soup.find('p', class_='star-rating') 
-            
-            if  product_review_rating :
-                rating_class = product_review_rating.get('class')[1]  
-    
-                rating_map = {
-                    'One': 1,
-                    'Two': 2,
-                    'Three': 3,
-                    'Four': 4,
-                    'Five': 5
-                }
-
-                review_rating = rating_map.get(rating_class, 0)  
-                
-            else:
-                review_rating = 'Information non disponible'
-                
-            data_to_export = {
-                'product_page_url': product_page_url,
-                'universal_product_code (upc)': upc,
-                'title': title,
-                'price_including_taxe': price_including_taxe,
-                'price_excluding_taxe': price_excluding_taxe,
-                'number_available': number_available,
-                'product_description': product_description,
-                'category': category,
-                'review_rating': review_rating,
-                'image_url': image_url,
-            }
-            
-            export_folder = 'export'
-            if not os.path.exists(export_folder):
-                os.makedirs(export_folder)
-                
-            timestamp = time.strftime("%Y%m%d_%H%M%S")  
-            filename = f"{title.replace(' ', '_')}_{timestamp}.csv"  
-            file_path = os.path.join(export_folder, filename)
-            
-            file_exists = False
-            try:
-                with open(file_path, mode='r'):
-                    file_exists = True
-            except FileNotFoundError:
-                pass
-            
-            with open(file_path, mode='a', newline='', encoding='utf-8') as file:
-                writer = csv.DictWriter(file, fieldnames=data_to_export.keys())
-                
-                if not file_exists:
-                    writer.writeheader()  
-                
-                writer.writerow(data_to_export)  
-
-            print(f"Les informations ont été exportées dans {file_path}")
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            print("Page récupérée avec succès.")
+            return BeautifulSoup(response.content, "html.parser")
         else:
-            print(f"Erreur : Impossible de récupérer la page. Code statut : {page.status_code}")
-    except requests.exceptions.MissingSchema:
-        print("Erreur : L'URL entrée n'est pas valide. Assurez-vous qu'elle commence par 'http://' ou 'https://'.")
+            print(f"Impossible de récupérer la page. Code statut : {response.status_code}")
+            return None
     except requests.exceptions.RequestException as e:
-        print(f"Une erreur est survenue : {e}")
+        print(f"Une erreur est survenue lors de la requête : {e}")
+        return None
+
+def extract_product_data(soup, url):
+    """
+    Extrait les données du produit depuis le contenu HTML.
+    """
+    try:
+        title = soup.find("h1").string if soup.find("h1") else "Information non disponible"
+
+        # Image du produit
+        product_image_active = soup.find("div", class_="item active")
+        if product_image_active:
+            img_tag = product_image_active.find("img")
+            relative_img_url = img_tag['src'] if img_tag and 'src' in img_tag.attrs else None
+            image_url = urljoin(BASE_URL, relative_img_url) if relative_img_url else "Information non disponible"
+        else:
+            image_url = "Information non disponible"
+
+        # Description du produit
+        product_description_section = soup.find(id="product_description")
+        if product_description_section:
+            next_element = product_description_section.find_next("p")
+            product_description = next_element.text.strip() if next_element else "Information non disponible"
+        else:
+            product_description = "Information non disponible"
+
+        # Informations sur le produit
+        product_page = soup.find("article", class_="product_page")
+        product_info = {}
+        if product_page:
+            table = product_page.find("table")
+            if table:
+                for row in table.find_all("tr"):
+                    header = row.find("th")
+                    data = row.find("td")
+                    if header and data:
+                        key = header.text.strip()
+                        value = data.text.strip()
+                        product_info[key] = value
+
+        upc = product_info.get('UPC', 'Information non disponible')
+        price_excluding_taxe = product_info.get('Price (excl. tax)', 'Information non disponible')
+        price_including_taxe = product_info.get('Price (incl. tax)', 'Information non disponible')
+        availability = product_info.get('Availability', 'Information non disponible')
+        number_available = re.search(r'\((\d+)', availability).group(1) if 'Availability' in product_info else 'Information non disponible'
+
+        # Catégorie
+        breadcrumb_items = soup.select("ul.breadcrumb li")
+        category = breadcrumb_items[2].get_text(strip=True) if len(breadcrumb_items) > 2 else "Information non disponible"
+
+        # Évaluation
+        product_review_rating = soup.find('p', class_='star-rating')
+        if product_review_rating:
+            rating_class = product_review_rating.get('class')[1]
+            rating_map = {'One': 1, 'Two': 2, 'Three': 3, 'Four': 4, 'Five': 5}
+            review_rating = rating_map.get(rating_class, 0)
+        else:
+            review_rating = 'Information non disponible'
+
+        # Compilation des données
+        data = {
+            'product_page_url': url,
+            'universal_product_code (upc)': upc,
+            'title': title,
+            'price_including_taxe': price_including_taxe,
+            'price_excluding_taxe': price_excluding_taxe,
+            'number_available': number_available,
+            'product_description': product_description,
+            'category': category,
+            'review_rating': review_rating,
+            'image_url': image_url,
+        }
+        print("Données du produit extraites avec succès.")
+        return data
+    except Exception as e:
+        print(f"Erreur lors de l'extraction des données : {e}")
+        return None
+
+def export_to_csv(data, title):
+    """
+    Exporte les données dans un fichier CSV dans le dossier 'export'.
+    """
+    try:
+        export_folder = 'export'
+        if not os.path.exists(export_folder):
+            os.makedirs(export_folder)
+
+        # Créer un nom de fichier unique
+        timestamp = time.strftime("%d%m%Y_%H%M%S")
+        sanitized_title = re.sub(r'[^\w\-_\. ]', '_', title)
+        filename = f"{sanitized_title}_{timestamp}.csv"
+        file_path = os.path.join(export_folder, filename)
+
+        # Écriture des données dans le fichier
+        with open(file_path, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.DictWriter(file, fieldnames=data.keys())
+            writer.writeheader()
+            writer.writerow(data)
+
+        print(f"Données exportées avec succès dans {file_path}")
+    except Exception as e:
+        print(f"Erreur lors de l'exportation des données : {e}")
+
+def main():
+    url = input("Veuillez entrer l'URL que vous souhaitez scraper : ")
+
+    # Valider l'URL
+    if not validate_url(url):
+        return
+
+    # Récupérer la page
+    soup = fetch_page(url)
+    if not soup:
+        return
+
+    # Extraire les données du produit
+    product_data = extract_product_data(soup, url)
+    if not product_data:
+        return
+
+    # Exporter les données
+    export_to_csv(product_data, product_data['title'])
+
+if __name__ == "__main__":
+    main()
