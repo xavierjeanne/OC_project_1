@@ -4,7 +4,7 @@ Ce projet fait partie du cours de développement Python d'OpenClassrooms. Le but
 
 ## Description
 
-Ce projet consiste à scraper des informations à partir du site [Books to Scrape](https://books.toscrape.com/). Le script `extract.py` permet de récupérer les informations suivantes pour un livre donné :
+Ce projet consiste à scraper des informations à partir du site [Books to Scrape](https://books.toscrape.com/). Le script `extract.py` permet de récupérer pour tout les livres d'une catégorie donnée les informations suivantes  :
 - URL de la page produit
 - Titre du livre
 - Description du produit
@@ -41,6 +41,6 @@ Ce projet consiste à scraper des informations à partir du site [Books to Scrap
 4. Executer le script :
     python extract.py
 
-5. Visiter le site https://books.toscrape.com/ , cliquer sur un des livres, copier l'url de la page et la coller dans le terminal quand on vous le demande
+5. Visiter le site https://books.toscrape.com/ , cliquer sur une des catégarie de livre, copier l'url de la page et la coller dans le terminal quand on vous le demande
 
 6. Récupérer le fichier généré dans le dossier export et utiliser un logiciel pouvant importer des fichiers CSV (Excel par exemple) pour voir les informations extraites
