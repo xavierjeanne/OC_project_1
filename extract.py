@@ -8,18 +8,36 @@ from urllib.parse import urljoin
 
 
 # URL de base pour les images
-BASE_URL = 'https://books.toscrape.com/'
-EXPECTED_PREFIX = "https://books.toscrape.com/catalogue/category/books"
+BASE_URL = "https://books.toscrape.com/"
+BASE_URL_BOOKS = "https://books.toscrape.com/catalogue/"
 
-def validate_url(url):
+def extract_category_urls(soup):
     """
-    Vérifie si l'URL fournie est valide et commence par le préfixe attendu.
+    Extrait toutes les URLs des catégories de livres.
     """
-    if not url.startswith(EXPECTED_PREFIX):
-        print(f"L'URL doit commencer par {EXPECTED_PREFIX}.")
-        return False
-    return True
-
+    try:
+        side_categories = soup.find('div', class_='side_categories')
+        if not side_categories:
+            print("Erreur : conteneur des catégories introuvable.")
+            return []
+        
+        category_links = side_categories.find_all('a')
+        category_urls = []
+        
+        for link in category_links:
+            href = link.get('href')
+            if href:
+                full_url = urljoin(BASE_URL, href)
+                if "catalogue/category/books_1/index.html" not in full_url:
+                    category_urls.append(full_url)
+                    
+        print(f"{len(category_urls)} catégories trouvées :")
+        
+        return category_urls
+    except Exception as e:
+        print(f"Erreur lors de l'extraction des catégories : {e}")
+        return []
+    
 def extract_urls_book(soup,url):
     """
     Extrait toutes les URL des livres appartenant à une catégorie.
@@ -27,8 +45,8 @@ def extract_urls_book(soup,url):
     """
     try:
         if url.endswith("index.html"):
-           url = url[:-10]  
-        
+           url = url[:-11]  
+       
         # Extraire le nombre total de résultats
         results_text = soup.find("form", class_="form-horizontal").find("strong").text.strip()
         total_results = int(results_text) 
@@ -42,20 +60,24 @@ def extract_urls_book(soup,url):
         book_list = soup.find_all('h3')  
         for book in book_list:
             book_url = book.find('a')['href']
-            full_url = urljoin(url, book_url)  
+            if book_url.startswith("../../../"):
+                book_url = book_url[9:]  
+            full_url = urljoin(BASE_URL_BOOKS, book_url)  
             book_urls.append(full_url)
-
+        
         # Générer les URLs pour toutes les pages suivantes si nécessaire
         for page_num in range(2, total_pages + 1):
             page_url = f"{url}/page-{page_num}.html"
            
-            page_soup = fetch_page(page_url)
+            page_soup = fetch_page(page_url, content_type="catégorie")
             if page_soup:
                 
                 book_list = page_soup.find_all('h3') 
                 for book in book_list:
                     book_url = book.find('a')['href']
-                    full_url = urljoin(url, book_url)
+                    if book_url.startswith("../../../"):
+                        book_url = book_url[9:] 
+                    full_url = urljoin(BASE_URL_BOOKS, book_url)
                     book_urls.append(full_url)
 
        
@@ -64,15 +86,18 @@ def extract_urls_book(soup,url):
         print(f"Erreur lors de l'extraction des données : {e}")
         return None
     
-def fetch_page(url):
+def fetch_page(url, content_type="unknown", current_item=None, total_items=None):
     """
     Effectue une requête HTTP pour récupérer le contenu de la page.
     """
     try:
-        # Connexion a la page
+        if total_items and current_item:
+            progress = f"({current_item}/{total_items})"
+        else:
+            progress = ""
+        print(f"Récupération de la page ({content_type}) {progress}: {url}")
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
-            print("Page récupérée avec succès.")
             return BeautifulSoup(response.content, "html.parser")
         else:
             print(f"Impossible de récupérer la page. Code statut : {response.status_code}")
@@ -172,7 +197,7 @@ def export_to_csv(data_list, category_name):
 
         # Créer un nom de fichier unique
         timestamp = time.strftime("%d%m%Y_%H%M%S")
-        sanitized_category_name = re.sub(r'[^\w\-_\. ]', '_', category_name)
+        sanitized_category_name = re.sub(r'[^\w\-.]', '_', category_name).replace(' ', '_')
         filename = f"{sanitized_category_name}_{timestamp}.csv"
         file_path = os.path.join(export_folder, filename)
         
@@ -190,35 +215,45 @@ def export_to_csv(data_list, category_name):
         print(f"Erreur lors de l'exportation des données : {e}")
 
 def main():
-    url = input("Veuillez entrer l'URL que vous souhaitez scraper : ")
-
-    # Valider l'URL
-    if not validate_url(url):
-        return
-
-    # Récupérer la page
-    soup = fetch_page(url)
+    # Récupérer la page principale
+    soup = fetch_page(BASE_URL, content_type="page principale")
     if not soup:
         return
-    
-    # Extraire les URLs des livres de cette catégorie
-    book_urls = extract_urls_book(soup, url)
-    
-    # Extraire les données pour chaque livre
-    product_data_list = []
-    for book_url in book_urls:
-        page_soup = fetch_page(book_url)
-        if not page_soup:
-            continue
-        product_data, product_category = extract_product_data(page_soup, book_url)
-        if product_data:
-            product_data_list.append(product_data)
-            category = product_category
-            
-    # Exporter les données
-    if product_data_list:
-        
-        export_to_csv(product_data_list, category)
 
+    category_urls = extract_category_urls(soup)
+
+    for category_index, category_url in enumerate(category_urls, start=1):
+        # Indiquer le nombre total de catégories
+        print(f"--- Catégorie {category_index}/{len(category_urls)} ---")
+
+        # Récupérer les livres de la catégorie
+        category_soup = fetch_page(category_url, content_type="catégorie")
+        if not category_soup:
+            continue
+
+        book_urls = extract_urls_book(category_soup,category_url)
+        if not book_urls:
+            print("Aucun livre trouvé dans cette catégorie.")
+            continue
+
+        print(f"Nombre de livres trouvés dans la catégorie : {len(book_urls)}")
+
+        # Extraire les données pour chaque livre
+        product_data_list = []
+        for book_index, book_url in enumerate(book_urls, start=1):
+            book_soup = fetch_page(book_url, content_type="livre", current_item=book_index, total_items=len(book_urls))
+            if not book_soup:
+                continue
+            product_data, product_category = extract_product_data(book_soup, book_url)
+            if product_data:
+                product_data_list.append(product_data)
+                category = product_category
+
+        # Exporter les données
+        if product_data_list:
+            export_to_csv(product_data_list, category)
+
+    print("Tous les fichiers ont été exportés avec succès. Vous pouvez les trouver dans le dossier 'export'.")
+    
 if __name__ == "__main__":
     main()
