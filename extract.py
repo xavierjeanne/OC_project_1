@@ -113,7 +113,11 @@ def extract_product_data(soup, url):
     """
     try:
         title = soup.find("h1").string if soup.find("h1") else "Information non disponible"
-
+        
+        # Catégory 
+        breadcrumb_items = soup.select("ul.breadcrumb li")
+        category = breadcrumb_items[2].get_text(strip=True) if len(breadcrumb_items) > 2 else "Information non disponible"
+       
         # Book image
         product_image_active = soup.find("div", class_="item active")
         if product_image_active:
@@ -123,6 +127,9 @@ def extract_product_data(soup, url):
         else:
             image_url = "Information non disponible"
 
+        if image_url != "Information non disponible":
+            download_image(image_url, category, title)
+            
         # Book description
         product_description_section = soup.find(id="product_description")
         if product_description_section:
@@ -151,9 +158,7 @@ def extract_product_data(soup, url):
         availability = product_info.get('Availability', 'Information non disponible')
         number_available = re.search(r'\((\d+)', availability).group(1) if 'Availability' in product_info else 'Information non disponible'
 
-        # Catégory
-        breadcrumb_items = soup.select("ul.breadcrumb li")
-        category = breadcrumb_items[2].get_text(strip=True) if len(breadcrumb_items) > 2 else "Information non disponible"
+      
 
         # Évaluation
         product_review_rating = soup.find('p', class_='star-rating')
@@ -183,6 +188,41 @@ def extract_product_data(soup, url):
         print(f"Erreur lors de l'extraction des données : {e}")
         return None
 
+def download_image(image_url, category, book_title):
+    """
+    Downloads an image and saves it to a folder.
+    """
+    try:
+        # Create a folder for the category if it doesn't exist
+        category_folder = os.path.join('export', category)
+        if not os.path.exists(category_folder):
+            os.makedirs(category_folder)
+
+        sanitized_title = book_title.replace(" ", "_")
+        sanitized_title = re.sub(r'[<>:"/\\|?*]', '_', sanitized_title) 
+        
+        response = requests.get(image_url, stream=True)
+        if response.status_code == 200:
+            # Get the file extension from the URL
+            file_extension = image_url.split('.')[-1]
+            if not file_extension: 
+                file_extension = 'jpg'
+
+            # Use the book title as the filename
+            filename = f"{sanitized_title}.{file_extension}"
+            image_path = os.path.join(category_folder, filename)
+            
+            # Save the image to the folder
+            with open(image_path, 'wb') as img_file:
+                for chunk in response.iter_content(1024):
+                    img_file.write(chunk)
+
+            print(f"Image téléchargée : {image_path}")
+        else:
+            print(f"Erreur lors du téléchargement de l'image. Code statut : {response.status_code}")
+    except Exception as e:
+        print(f"Erreur lors du téléchargement de l'image : {e}")
+        
 def export_to_csv(data_list, category_name):
     """
     Exports the data to a CSV file.
