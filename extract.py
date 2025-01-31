@@ -194,7 +194,8 @@ def download_image(image_url, category, book_title):
     """
     try:
         # Create a folder for the category if it doesn't exist
-        category_folder = os.path.join('export', category)
+        sanitized_category_name = re.sub(r'[^\w\-.]', '_', category).replace(' ', '_')
+        category_folder = os.path.join('export',  sanitized_category_name)
         if not os.path.exists(category_folder):
             os.makedirs(category_folder)
 
@@ -232,14 +233,15 @@ def export_to_csv(data_list, category_name):
             print("Aucune donnée à exporter.")
             return
         
-        export_folder = 'export'
+        # Use the category name as the export folder
+        sanitized_category_name = re.sub(r'[^\w\-.]', '_', category_name).replace(' ', '_')
+        export_folder = os.path.join('export', sanitized_category_name)
         if not os.path.exists(export_folder):
             os.makedirs(export_folder)
 
-        # Create a unique filename based on the category name and current timestamp
-        timestamp = time.strftime("%d%m%Y_%H%M%S")
-        sanitized_category_name = re.sub(r'[^\w\-.]', '_', category_name).replace(' ', '_')
-        filename = f"{sanitized_category_name}_{timestamp}.csv"
+        # Create a unique filename based on category_name
+       
+        filename = f"{sanitized_category_name}.csv"
         file_path = os.path.join(export_folder, filename)
         
         # Get the fieldnames from the first dictionary in the list
@@ -247,13 +249,14 @@ def export_to_csv(data_list, category_name):
         
         # Write data to the file
         with open(file_path, mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.DictWriter(file, fieldnames= fieldnames)
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(data_list)
 
         print(f"Données exportées avec succès dans {file_path}")
     except Exception as e:
         print(f"Erreur lors de l'exportation des données : {e}")
+
 
 def main():
     # Fetch the main page
